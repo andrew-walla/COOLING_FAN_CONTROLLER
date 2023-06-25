@@ -84,7 +84,8 @@ double voltage_scaled(int pin) {
 }
 
 double voltage_percent(int pin) {
-  return voltage_raw(pin)*100.0;
+  const double adc_max = 1024;
+  return voltage_raw(pin)*100.0/adc_max;
 }
 
 double thermistor(int enable_pin, int adc_pin, int ref_pin) {
@@ -157,6 +158,7 @@ private:
 class PwmCounter {
 public:
   PwmCounter(const unsigned pin, const double frequency) :
+    _pin(pin),
     _period_us((1/frequency)*TO_MICROSECONDS),
     _last_high(0),
     _this_high(0),
@@ -175,6 +177,7 @@ public:
       case LOW:
         _last_low = micros();
     }
+    _last_state = this_state;
   }
 
   operator double() {
@@ -183,7 +186,9 @@ public:
       return 0.0;
     if(micros()-_last_high>_period_us)
       return digitalRead(_pin)?100.0:0.0;
-    return 1-(_last_low-_last_high)/(_this_high-_last_high);
+    double period = _this_high-_last_high;
+    double duty = _last_low>_last_high?_last_low-_last_high:0.0;
+    return (1.0-duty/period)*100.0;
   }
 
 private:
@@ -225,6 +230,8 @@ State* engine_cold() {
   
   if(switch_current()<RELAY_CURRENT/10)
     return failure_detected;
+
+    return engine_cold;
 }
 
 State* engine_warm() {
@@ -258,6 +265,8 @@ State* engine_warm() {
 
   if(pcb_temperature()<10.0*C)
     return engine_cold;
+
+  return engine_warm;
 }
 
 State* engine_hot() {
@@ -281,6 +290,8 @@ State* engine_hot() {
 
   if(switch_current()>RELAY_CURRENT/2)
     return failure_detected;
+
+  return engine_hot;
 }
 
 State* failure_detected() {
